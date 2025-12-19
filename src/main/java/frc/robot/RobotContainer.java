@@ -23,17 +23,17 @@ public class RobotContainer {
       new CANdleLib(Constants.candle.id, CANdle.LEDStripType.RGB);
 
   private final CANdle candle = candleLib.createCANdle();
-  private final LEDStrip ledStrip = new LEDStrip(0, 7);
+  private final LEDStrip ledStrip = new LEDStrip(0, 100);
 
-  public static double value = 250.0;
+  private double value = 50.0;
 
   private final Animations animation =
       candleLib.createAnimation(
           candle,
           ledStrip,
           0.0,
-          500.0,
-          value,
+          100.0,
+          () -> value,
           Colors.RED,
           Colors.OFF
       );
@@ -51,7 +51,7 @@ public class RobotContainer {
         .onTrue(new ExampleCommand(m_exampleSubsystem));
 
     m_driverController.x().onTrue(new InstantCommand(() -> animation.run())).onFalse(new InstantCommand(() -> animation.stop()));
-    m_driverController.y().whileTrue(new InstantCommand(() -> value+=1)).onFalse(new InstantCommand(() -> value-=1));
+    m_driverController.button(1).whileTrue(new InstantCommand(() -> value = 75)).onFalse(new InstantCommand(() -> value = 25));
 }
 
 

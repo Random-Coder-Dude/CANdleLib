@@ -2,6 +2,8 @@ package frc.robot.CANdle;
 
 import frc.robot.MockCANdle;
 
+import java.util.function.DoubleSupplier;
+
 import com.ctre.phoenix.led.CANdle;
 import com.ctre.phoenix.led.CANdleConfiguration;
 
@@ -96,7 +98,7 @@ public class CANdleLib{
     //     return new stateIndicator(candle, strip, possibleStates, colors); 
     // }
 
-    public Animations createAnimation(CANdle candle, LEDStrip strip, double min, double max, double value, Colors fillColor, Colors emptyColor) {
+    public Animations createAnimation(CANdle candle, LEDStrip strip, double min, double max, DoubleSupplier value, Colors fillColor, Colors emptyColor) {
         return new rangeValue(candle, strip, min, max, value, fillColor, emptyColor); 
     }
     
@@ -400,25 +402,22 @@ public class CANdleLib{
         private final CANdleLib.LEDStrip strip;
         private final double min;
         private final double max;
-        private double value;
+        private final DoubleSupplier valueSupplier;
         private final CANdleLib.LEDColor fillColor;
         private final CANdleLib.LEDColor emptyColor;
     
-        public rangeValue(CANdle candle, CANdleLib.LEDStrip strip, double min, double max, double value, Colors fillColor, Colors emptyColor) {
+        public rangeValue(CANdle candle, CANdleLib.LEDStrip strip, double min, double max, DoubleSupplier valueSupplier, Colors fillColor, Colors emptyColor) {
             this.candle = candle;
             this.strip = strip;
             this.min = min;
             this.max = max;
-            this.value = MathUtil.clamp(value, min, max);
+            this.valueSupplier = valueSupplier;
             this.fillColor = fillColor;
             this.emptyColor = emptyColor;
         }
     
-        public void setValue(double newValue) {
-            this.value = MathUtil.clamp(newValue, min, max);
-        }
-    
         private void draw() {
+            double value = MathUtil.clamp(valueSupplier.getAsDouble(), min, max);
             int totalLEDs = strip.length();
             double fraction = (value - min) / (max - min);
             int litLEDs = (int) Math.round(fraction * totalLEDs);
@@ -430,7 +429,7 @@ public class CANdleLib{
                 candle.setLEDs(emptyColor.getRed(), emptyColor.getGreen(), emptyColor.getBlue(), 0, strip.start + litLEDs, remaining);
             }
         }
-
+    
         private Command updateCommand = new Command() {
             @Override
             public void initialize() {
@@ -445,7 +444,7 @@ public class CANdleLib{
             public boolean isFinished() {
                 return false;
             }
-
+    
             @Override
             public void end(boolean interrupted) {}
         };
@@ -471,5 +470,5 @@ public class CANdleLib{
             }
             candle.setLEDs(0, 0, 0, 0, strip.start, strip.length());
         }
-    }
+    }    
 }
