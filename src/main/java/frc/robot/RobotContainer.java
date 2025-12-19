@@ -29,8 +29,9 @@ public class RobotContainer {
       candleLib.createAnimation(
           candle,
           ledStrip,
-          10.0,
-          Colors.RED
+          Colors.BLUE,
+          0.2,
+          0.5
       );
 
   private final CommandXboxController m_driverController =

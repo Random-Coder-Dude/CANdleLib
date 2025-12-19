@@ -110,6 +110,10 @@ public class CANdleLib{
     public Animations createAnimation(CANdle candle, LEDStrip strip, double time, LEDColor color) {
         return new countdown(candle, strip, time, color);
     }
+
+    public Animations createAnimation(CANdle candle, LEDStrip strip, LEDColor color, double frequency, double dimmness) {
+        return new breathe(candle, strip, color, frequency, dimmness);
+    }
     
     /**
      * Creates a command to set the entire LED strip to a solid color.
@@ -375,7 +379,7 @@ public class CANdleLib{
         void end();
     }
 
-    public static class stateIndicator implements Animations{
+    private static class stateIndicator implements Animations{
         private CANdle candle;
         private LEDStrip strip;
         private Supplier<Enum<?>> states;
@@ -449,7 +453,7 @@ public class CANdleLib{
         }
     }
 
-    public static class rangeValue implements Animations {
+    private static class rangeValue implements Animations {
         private final CANdle candle;
         private final CANdleLib.LEDStrip strip;
         private final double min;
@@ -524,7 +528,7 @@ public class CANdleLib{
         }
     }    
 
-    public static class booleanAnim implements Animations{
+    private static class booleanAnim implements Animations{
         private CANdle candle;
         private LEDStrip strip;
         private Supplier<Boolean> state;
@@ -589,21 +593,21 @@ public class CANdleLib{
         }
     }
 
-    public static class countdown implements Animations{
+    private static class countdown implements Animations{
         private CANdle candle;
         private LEDStrip strip;
         private double time;
         private LEDColor color;
-        private final long startTimeMs;
-
+        private long startTimeMs;
+        
         public countdown(CANdle candle, LEDStrip strip, double time, LEDColor color) {
             this.candle = candle;
             this.strip = strip;
             this.time = time;
             this.color = color;
-            this.startTimeMs = System.currentTimeMillis();
+            this.startTimeMs = 0;
         }
-
+        
         public void draw() {
             long currentTimeMs = System.currentTimeMillis();
             double elapsedSeconds = (currentTimeMs - startTimeMs) / 1000.0;
@@ -611,26 +615,91 @@ public class CANdleLib{
             int totalLEDs = strip.length();
             double fraction = remaining / time;
             int litLEDs = (int) Math.round(fraction * totalLEDs);
-    
+            
             litLEDs = Math.max(0, Math.min(litLEDs, totalLEDs));
-    
-            candle.setLEDs(
-                    color.getRed(),
-                    color.getGreen(),
-                    color.getBlue(),
-                    0,
-                    strip.start,
-                    litLEDs
-            );
-    
+            
+            candle.setLEDs(color.getRed(), color.getGreen(), color.getBlue(), 0, strip.start, litLEDs);
+            
             int remainingLEDs = totalLEDs - litLEDs;
             if (remainingLEDs > 0) {
-                candle.setLEDs(
-                        0, 0, 0, 0,
-                        strip.start + litLEDs,
-                        remainingLEDs
-                );
+                candle.setLEDs(0, 0, 0, 0, strip.start + litLEDs, remainingLEDs);
             }
+        }
+        
+        private Command updateCommand = new Command() {
+            @Override
+            public void initialize() {
+                startTimeMs = System.currentTimeMillis();
+            }
+    
+            @Override
+            public void execute() {
+                draw();
+            }
+            
+            @Override
+            public boolean isFinished() {
+                if ((System.currentTimeMillis() - startTimeMs) / 1000.0 >= time) {
+                    return true;
+                }
+                else {
+                    return false;
+                }
+            }
+            
+            @Override
+            public void end(boolean interrupted) {}
+        };
+
+        @Override
+        public void run() {
+            if (!updateCommand.isScheduled()) {
+                updateCommand.schedule();
+            }
+        }
+
+        @Override
+        public void stop() {
+            if (updateCommand.isScheduled()) {
+                updateCommand.cancel();
+            }
+        }
+
+        @Override
+        public void end() {
+            if (updateCommand.isScheduled()) {
+                updateCommand.cancel();
+            }
+            candle.setLEDs(0, 0, 0, 0, strip.start, strip.length());
+        }
+    }
+
+    private static class breathe implements Animations{
+        private CANdle candle;
+        private LEDStrip strip;
+        private LEDColor color;
+        private double frequency;
+        private double dimmness;
+
+        public breathe(CANdle candle, LEDStrip strip, LEDColor color, double frequency, double dimmness){
+            this.candle = candle;
+            this.strip = strip;
+            this.color = color;
+            this.frequency = frequency;
+            this.dimmness = dimmness;
+        }
+
+        private void draw() {
+            long currentTimeMs = System.currentTimeMillis();
+            double periodMs = 1000.0 / frequency;
+            double timeInPeriod = currentTimeMs % periodMs;
+            
+            double phase = (timeInPeriod / periodMs) * 2 * Math.PI;
+            double brightness = (Math.sin(phase) + 1) / 2;
+            
+            double scale = dimmness + (brightness * (1.0 - dimmness));
+            
+            candle.setLEDs((int)(color.getRed() * scale), (int)(color.getGreen() * scale), (int)(color.getBlue() * scale), 0, strip.start, strip.length());
         }
 
         private Command updateCommand = new Command() {
