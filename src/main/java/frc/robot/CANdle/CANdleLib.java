@@ -9,7 +9,6 @@ import edu.wpi.first.math.MathUtil;
 import edu.wpi.first.wpilibj.RobotBase;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.InstantCommand;
-import edu.wpi.first.wpilibj2.command.CommandScheduler;
 
 /**
  * Subsystem for controlling CTRE CANdle LED strips with animations and color control.
@@ -404,7 +403,6 @@ public class CANdleLib{
         private double value;
         private final CANdleLib.LEDColor fillColor;
         private final CANdleLib.LEDColor emptyColor;
-        private Command updateCommand;
     
         public rangeValue(CANdle candle, CANdleLib.LEDStrip strip, double min, double max, double value, Colors fillColor, Colors emptyColor) {
             this.candle = candle;
@@ -432,12 +430,31 @@ public class CANdleLib{
                 candle.setLEDs(emptyColor.getRed(), emptyColor.getGreen(), emptyColor.getBlue(), 0, strip.start + litLEDs, remaining);
             }
         }
+
+        private Command updateCommand = new Command() {
+            @Override
+            public void initialize() {
+            }
+    
+            @Override
+            public void execute() {
+                draw();
+            }
+    
+            @Override
+            public boolean isFinished() {
+                return false;
+            }
+
+            @Override
+            public void end(boolean interrupted) {}
+        };
     
         @Override
         public void run() {
             if (!updateCommand.isScheduled()) {
                 updateCommand.schedule();
-            }
+            }   
         }
     
         @Override
@@ -455,6 +472,4 @@ public class CANdleLib{
             candle.setLEDs(0, 0, 0, 0, strip.start, strip.length());
         }
     }
-    
-
 }
