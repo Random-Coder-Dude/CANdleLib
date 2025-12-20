@@ -1,10 +1,10 @@
 package frc.robot.CANdle;
 
-import frc.robot.MockCANdleGUI;
-
 import java.util.function.DoubleSupplier;
 import java.util.function.Supplier;
 
+import com.ctre.phoenix.ErrorCode;
+import com.ctre.phoenix.led.Animation;
 import com.ctre.phoenix.led.CANdle;
 import com.ctre.phoenix.led.CANdleConfiguration;
 
@@ -12,6 +12,9 @@ import edu.wpi.first.math.MathUtil;
 import edu.wpi.first.wpilibj.RobotBase;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.InstantCommand;
+
+import javax.swing.*;
+import java.awt.*;
 
 /**
  * Subsystem for controlling CTRE CANdle LED strips with animations and color control.
@@ -41,6 +44,7 @@ import edu.wpi.first.wpilibj2.command.InstantCommand;
 public class CANdleLib{
     private int busId;
     private CANdle.LEDStripType m_rgbOrder;
+    private int ledCount = 100;
 
     /**
      * Constructs a new CANdleSubsystem with the specified CAN ID and LED strip type.
@@ -51,6 +55,12 @@ public class CANdleLib{
     public CANdleLib(int id, CANdle.LEDStripType rgbOrder) {
         busId = id;
         m_rgbOrder = rgbOrder;
+    }
+
+    public CANdleLib(int id, CANdle.LEDStripType rgbOrder, int ledCount) {
+        busId = id;
+        m_rgbOrder = rgbOrder;
+        this.ledCount = ledCount;
     }
     
     /**
@@ -69,7 +79,7 @@ public class CANdleLib{
             candle = new CANdle(busId);
         }
         else {
-            candle = new MockCANdleGUI(busId);
+            candle = new MockCANdleGUI(busId, ledCount);
         }
         CANdleConfiguration config = new CANdleConfiguration();
         config.stripType = m_rgbOrder;
@@ -109,7 +119,7 @@ public class CANdleLib{
      * @return an Animations instance for the state indicator
      */
     public Animations createAnimation(CANdle candle, LEDStrip strip, Supplier<Enum<?>> possibleStates, LEDColor... colors) {
-        return new stateIndicator(candle, strip, possibleStates, colors); 
+        return new StateIndicator(candle, strip, possibleStates, colors); 
     }
 
     /**
@@ -130,7 +140,7 @@ public class CANdleLib{
      * @return an Animations instance for the range value display
      */
     public Animations createAnimation(CANdle candle, LEDStrip strip, double min, double max, DoubleSupplier value, LEDColor fillColor, LEDColor emptyColor) {
-        return new rangeValue(candle, strip, min, max, value, fillColor, emptyColor); 
+        return new RangeValue(candle, strip, min, max, value, fillColor, emptyColor); 
     }
 
     /**
@@ -148,7 +158,7 @@ public class CANdleLib{
      * @return an Animations instance for the boolean indicator
      */
     public Animations createAnimation(CANdle candle, LEDStrip strip, Supplier<Boolean> state, LEDColor trueColor, LEDColor falseColor) {
-        return new booleanAnim(candle, strip, state, trueColor, falseColor);
+        return new BooleanAnim(candle, strip, state, trueColor, falseColor);
     }
 
     /**
@@ -166,7 +176,7 @@ public class CANdleLib{
      * @return an Animations instance for the countdown timer
      */
     public Animations createAnimation(CANdle candle, LEDStrip strip, double time, LEDColor color) {
-        return new countdown(candle, strip, time, color);
+        return new Countdown(candle, strip, time, color);
     }
 
     /**
@@ -186,19 +196,18 @@ public class CANdleLib{
      * @return an Animations instance for the breathing effect
      */
     public Animations createAnimation(CANdle candle, LEDStrip strip, LEDColor color, double frequency, double dimmness, double phaseShift) {
-        return new breathe(candle, strip, color, frequency, dimmness, phaseShift);
+        return new Breathe(candle, strip, color, frequency, dimmness, phaseShift);
     }
     
     /**
      * Creates a command to set the entire LED strip to a solid color.
      * 
-     * <p>This command first turns off all LEDs, then sets them to the specified color.
-     * This two-step process prevents certain LEDs from sticking in their previous state.
-     * The command completes instantly.
+     * <p>This command sets all LEDs to the specified color. The command
+     * completes instantly.
      * 
      * @param candle the CANdle device to control (must not be null)
      * @param color the color to set (must not be null)
-     * @return a SequentialCommandGroup that clears then sets the strip color
+     * @return an InstantCommand that sets the strip color
      * @throws IllegalArgumentException if any parameter is null
      */
     public Command setColor(CANdle candle, LEDColor color) {
@@ -212,16 +221,15 @@ public class CANdleLib{
     /**
      * Creates a command to set the entire LED strip to a solid color using RGB values.
      * 
-     * <p>This command first turns off all LEDs, then sets them to the specified color.
-     * This two-step process prevents certain LEDs from sticking in their previous state.
-     * This is a convenience overload that accepts raw RGB integer values
-     * instead of an LEDColor object.
+     * <p>This command sets all LEDs to the specified color. The command
+     * completes instantly. This is a convenience overload that accepts raw RGB
+     * integer values instead of an LEDColor object.
      * 
      * @param candle the CANdle device to control (must not be null)
      * @param red the red channel value (0-255)
      * @param green the green channel value (0-255)
      * @param blue the blue channel value (0-255)
-     * @return a SequentialCommandGroup that clears then sets the strip color
+     * @return an InstantCommand that sets the strip color
      * @throws IllegalArgumentException if candle is null
      */
     public Command setColor(CANdle candle, int red, int green, int blue) {
@@ -235,15 +243,13 @@ public class CANdleLib{
     /**
      * Creates a command to set a specific LED strip segment to a solid color.
      * 
-     * <p>This command first turns off the specified segment, then sets it to the color.
-     * This two-step process prevents certain LEDs from sticking in their previous state.
-     * This command sets only the LEDs in the specified strip segment,
-     * leaving other LEDs unchanged. The command completes instantly.
+     * <p>This command sets only the LEDs in the specified strip segment to the
+     * given color, leaving other LEDs unchanged. The command completes instantly.
      * 
      * @param candle the CANdle device to control (must not be null)
      * @param strip the LED strip segment to set (must not be null)
      * @param color the color to set (must not be null)
-     * @return a SequentialCommandGroup that clears then sets the strip segment color
+     * @return an InstantCommand that sets the strip segment color
      * @throws IllegalArgumentException if any parameter is null
      */
     public Command setStripColor(CANdle candle, LEDStrip strip, LEDColor color) {
@@ -257,8 +263,8 @@ public class CANdleLib{
     /**
      * Creates a command to set a specific LED strip segment to a solid color using RGB values.
      * 
-     * <p>This command first turns off the specified segment, then sets it to the color.
-     * This two-step process prevents certain LEDs from sticking in their previous state.
+     * <p>This command sets only the LEDs in the specified strip segment to the
+     * given color, leaving other LEDs unchanged. The command completes instantly.
      * This is a convenience overload that accepts raw RGB integer values
      * instead of an LEDColor object.
      * 
@@ -267,7 +273,7 @@ public class CANdleLib{
      * @param red the red channel value (0-255)
      * @param green the green channel value (0-255)
      * @param blue the blue channel value (0-255)
-     * @return a SequentialCommandGroup that clears then sets the strip segment color
+     * @return an InstantCommand that sets the strip segment color
      * @throws IllegalArgumentException if candle or strip is null
      */
     public Command setStripColor(CANdle candle, LEDStrip strip, int red, int green, int blue) {
@@ -501,7 +507,7 @@ public class CANdleLib{
      * It continuously polls the state supplier and updates the LED strip when the state changes.
      * If there are more states than colors, the mapping wraps using modulo arithmetic.
      */
-    private static class stateIndicator implements Animations{
+    private static class StateIndicator implements Animations{
         private CANdle candle;
         private LEDStrip strip;
         private Supplier<Enum<?>> states;
@@ -515,7 +521,7 @@ public class CANdleLib{
          * @param states supplier that returns the current enum state
          * @param colors array of colors mapped to state ordinal values
          */
-        public stateIndicator(CANdle candle, LEDStrip strip, Supplier<Enum<?>> states, LEDColor... colors) {
+        public StateIndicator(CANdle candle, LEDStrip strip, Supplier<Enum<?>> states, LEDColor... colors) {
             this.candle = candle;
             this.strip = strip;
             this.states = states;
@@ -590,7 +596,7 @@ public class CANdleLib{
      * number of LEDs. The fill color represents the current value, while the empty color
      * shows the remaining capacity. The value is automatically clamped to the min/max range.
      */
-    private static class rangeValue implements Animations {
+    private static class RangeValue implements Animations {
         private final CANdle candle;
         private final CANdleLib.LEDStrip strip;
         private final double min;
@@ -610,7 +616,7 @@ public class CANdleLib{
          * @param fillColor color for LEDs representing the current value
          * @param emptyColor color for LEDs beyond the current value
          */
-        public rangeValue(CANdle candle, CANdleLib.LEDStrip strip, double min, double max, DoubleSupplier valueSupplier, LEDColor fillColor, LEDColor emptyColor) {
+        public RangeValue(CANdle candle, CANdleLib.LEDStrip strip, double min, double max, DoubleSupplier valueSupplier, LEDColor fillColor, LEDColor emptyColor) {
             this.candle = candle;
             this.strip = strip;
             this.min = min;
@@ -683,7 +689,7 @@ public class CANdleLib{
      * it displays trueColor; when false, it displays falseColor. Useful for binary indicators
      * like sensor states or system status.
      */
-    private static class booleanAnim implements Animations{
+    private static class BooleanAnim implements Animations{
         private CANdle candle;
         private LEDStrip strip;
         private Supplier<Boolean> state;
@@ -699,7 +705,7 @@ public class CANdleLib{
          * @param trueColor color to display when state is true
          * @param falseColor color to display when state is false
          */
-        public booleanAnim(CANdle candle, LEDStrip strip, Supplier<Boolean> state, LEDColor trueColor, LEDColor falseColor) {
+        public BooleanAnim(CANdle candle, LEDStrip strip, Supplier<Boolean> state, LEDColor trueColor, LEDColor falseColor) {
             this.candle = candle;
             this.strip = strip;
             this.state = state;
@@ -764,7 +770,7 @@ public class CANdleLib{
      * creating a visual countdown. When the timer expires, all LEDs are off and the animation
      * finishes. Calling run() after completion restarts the countdown from the beginning.
      */
-    private static class countdown implements Animations{
+    private static class Countdown implements Animations{
         private CANdle candle;
         private LEDStrip strip;
         private double time;
@@ -779,7 +785,7 @@ public class CANdleLib{
          * @param time the countdown duration in seconds
          * @param color the color for the lit countdown LEDs
          */
-        public countdown(CANdle candle, LEDStrip strip, double time, LEDColor color) {
+        public Countdown(CANdle candle, LEDStrip strip, double time, LEDColor color) {
             this.candle = candle;
             this.strip = strip;
             this.time = time;
@@ -860,7 +866,7 @@ public class CANdleLib{
      * a minimum brightness (dimmness) and full brightness at the specified frequency. Multiple
      * breathing animations can be phase-shifted to create wave patterns across strip segments.
      */
-    private static class breathe implements Animations{
+    private static class Breathe implements Animations{
         private CANdle candle;
         private LEDStrip strip;
         private LEDColor color;
@@ -878,7 +884,7 @@ public class CANdleLib{
          * @param dimmness the minimum brightness as a fraction (0.0-1.0)
          * @param phaseShift the phase offset in radians (0 to 2π)
          */
-        public breathe(CANdle candle, LEDStrip strip, LEDColor color, double frequency, double dimmness, double phaseShift) {
+        public Breathe(CANdle candle, LEDStrip strip, LEDColor color, double frequency, double dimmness, double phaseShift) {
             this.candle = candle;
             this.strip = strip;
             this.color = color;
@@ -941,4 +947,115 @@ public class CANdleLib{
             candle.setLEDs(0, 0, 0, 0, strip.start, strip.length());
         }
     }
+
+
+    /**
+     * Mock CANdle implementation with a GUI for simulation environments.
+     * 
+     * <p>This class simulates a CANdle device by displaying a graphical
+     * representation of the LED strip in a window. It allows visualization
+     * of LED colors and animations during simulation.
+     */
+    private static class MockCANdleGUI extends CANdle {
+        private final int LED_COUNT;
+        private final java.awt.Color[] leds;
+
+
+        private JFrame frame;
+        private JPanel stripPanel;
+        private JLabel statusLabel;
+
+        public MockCANdleGUI(int deviceNumber, int ledCount) {
+            super(deviceNumber);
+        
+            if (!RobotBase.isSimulation()) {
+                throw new IllegalStateException("MockCANdleGUI must only be used in simulation");
+            }
+        
+            LED_COUNT = ledCount;
+            this.leds = new java.awt.Color[ledCount];
+        
+            for (int i = 0; i < ledCount; i++) {
+                leds[i] = java.awt.Color.BLACK;
+            }
+        
+            SwingUtilities.invokeLater(this::createGUI);
+        }
+        
+
+        private void createGUI() {
+            frame = new JFrame("Mock CANdle LED Strip");
+            frame.setSize(800, 180);
+            frame.setLayout(new BorderLayout());
+            frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+
+            stripPanel = new JPanel() {
+                @Override
+                protected void paintComponent(Graphics g) {
+                    super.paintComponent(g);
+
+                    int ledWidth = getWidth() / LED_COUNT;
+                    int height = getHeight();
+
+                    for (int i = 0; i < LED_COUNT; i++) {
+                        g.setColor(leds[i]);
+                        g.fillRect(i * ledWidth, 0, ledWidth - 1, height);
+                    }
+                }
+            };
+
+            statusLabel = new JLabel("Animation: None", SwingConstants.CENTER);
+
+            frame.add(stripPanel, BorderLayout.CENTER);
+            frame.add(statusLabel, BorderLayout.SOUTH);
+            frame.setVisible(true);
+            frame.setAlwaysOnTop(true);
+        }
+
+        @Override
+        public ErrorCode configAllSettings(CANdleConfiguration config, int timeoutMs) {
+            return ErrorCode.OK;
+        }
+
+        @Override
+        public ErrorCode setLEDs(int r, int g, int b) {
+            return setLEDs(r, g, b, 0, 0, LED_COUNT);
+        }
+
+        @Override
+        public ErrorCode setLEDs(int r, int g, int b, int w, int startIdx, int count) {
+            java.awt.Color color = new java.awt.Color(clamp(r), clamp(g), clamp(b));
+
+            int end = Math.min(startIdx + count, LED_COUNT);
+            for (int i = startIdx; i < end; i++) {
+                if (i >= 0) {
+                    leds[i] = color;
+                }
+            }
+
+            repaintStrip();
+            return ErrorCode.OK;
+        }
+
+        @Override
+        public ErrorCode animate(Animation animation, int slot) {
+            statusLabel.setText("Animation: " + animation.getClass().getSimpleName());
+            return ErrorCode.OK;
+        }
+
+        @Override
+        public ErrorCode clearAnimation(int slot) {
+            statusLabel.setText("Animation: None");
+            return ErrorCode.OK;
+        }
+
+        private void repaintStrip() {
+            SwingUtilities.invokeLater(stripPanel::repaint);
+        }
+
+        private int clamp(int v) {
+            return Math.max(0, Math.min(255, v));
+        }
+    }
+
 }
