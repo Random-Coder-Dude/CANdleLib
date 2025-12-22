@@ -3,10 +3,12 @@ package frc.robot.CANdle;
 import java.util.function.DoubleSupplier;
 import java.util.function.Supplier;
 
-import com.ctre.phoenix.ErrorCode;
-import com.ctre.phoenix.led.Animation;
-import com.ctre.phoenix.led.CANdle;
-import com.ctre.phoenix.led.CANdleConfiguration;
+import com.ctre.phoenix6.configs.CANdleConfiguration;
+import com.ctre.phoenix6.hardware.CANdle;
+import com.ctre.phoenix6.signals.RGBWColor;
+import com.ctre.phoenix6.StatusCode;
+import com.ctre.phoenix6.configs.LEDConfigs;
+import com.ctre.phoenix6.controls.SolidColor;
 
 import edu.wpi.first.math.MathUtil;
 import edu.wpi.first.wpilibj.RobotBase;
@@ -24,40 +26,37 @@ import java.awt.*;
  *   <li>Creating and configuring CANdle devices</li>
  *   <li>Defining LED strip segments</li>
  *   <li>Setting solid colors on strips</li>
- *   <li>Running various animations (rainbow, fire, strobe, etc.)</li>
+ *   <li>Running various animations (countdown, breathing, etc.)</li>
  *   <li>Configuring animation parameters</li>
  * </ul>
  * 
  * <p>Example usage:
  * <pre>
- * CANdleSubsystem ledSubsystem = new CANdleSubsystem(1, CANdle.LEDStripType.RGB);
- * CANdle candle = ledSubsystem.createCANdle();
- * LEDStrip strip = ledSubsystem.createLEDStrip(0, 60);
+ * CANdleLib ledLib = new CANdleLib(1, new LEDConfigs(), 100);
+ * CANdle candle = ledLib.createCANdle();
+ * LEDStrip strip = ledLib.createLEDStrip(0, 60);
  * 
  * // Set solid color
- * ledSubsystem.setStripColor(candle, strip, Colors.RED).schedule();
+ * ledLib.setStripColor(candle, strip, Colors.RED).schedule();
  * 
  * // Run animation
- * ledSubsystem.animateStrip(candle, strip, Colors.BLUE, AnimationTypes.Rainbow).schedule();
+ * Animations breathe = ledLib.createAnimation(candle, strip, Colors.BLUE, 0.5, 0.3, 0);
+ * breathe.run();
  * </pre>
  */
 public class CANdleLib{
     private int busId;
-    private CANdle.LEDStripType m_rgbOrder;
-    private int ledCount = 100;
+    private LEDConfigs m_rgbOrder;
+    public int ledCount;
 
     /**
-     * Constructs a new CANdleSubsystem with the specified CAN ID and LED strip type.
+     * Constructs a new CANdleLib with the specified CAN ID and LED strip type.
      * 
      * @param id the CAN bus ID of the CANdle device
      * @param rgbOrder the LED strip type defining the RGB byte order (e.g., RGB, GRB, BRG)
+     * @param ledCount the total number of LEDs connected to the CANdle
      */
-    public CANdleLib(int id, CANdle.LEDStripType rgbOrder) {
-        busId = id;
-        m_rgbOrder = rgbOrder;
-    }
-
-    public CANdleLib(int id, CANdle.LEDStripType rgbOrder, int ledCount) {
+    public CANdleLib(int id, LEDConfigs rgbOrder, int ledCount) {
         busId = id;
         m_rgbOrder = rgbOrder;
         this.ledCount = ledCount;
@@ -82,8 +81,8 @@ public class CANdleLib{
             candle = new MockCANdleGUI(busId, ledCount);
         }
         CANdleConfiguration config = new CANdleConfiguration();
-        config.stripType = m_rgbOrder;
-        candle.configAllSettings(config);
+        config.withLED(m_rgbOrder);
+        candle.getConfigurator().apply(config);
         return candle;
     }
 
@@ -215,7 +214,10 @@ public class CANdleLib{
             throw new IllegalArgumentException("Parameters cannot be null");
         }
 
-        return new InstantCommand(() -> candle.setLEDs(color.getRed(), color.getGreen(), color.getBlue()));
+        return new InstantCommand(() -> candle.setControl(
+            new SolidColor(0, ledCount - 1)
+                .withColor(new RGBWColor(color.getRed(), color.getGreen(), color.getBlue(), 0))
+        ));
     }
 
     /**
@@ -237,7 +239,10 @@ public class CANdleLib{
             throw new IllegalArgumentException("CANdle cannot be null");
         }
 
-        return new InstantCommand(() -> candle.setLEDs(red, green, blue));
+        return new InstantCommand(() -> candle.setControl(
+            new SolidColor(0, ledCount - 1)
+                .withColor(new RGBWColor(red, green, blue, 0))
+        ));
     }
 
     /**
@@ -257,7 +262,10 @@ public class CANdleLib{
             throw new IllegalArgumentException("Parameters cannot be null");
         }
 
-        return new InstantCommand(() -> candle.setLEDs(color.getRed(), color.getGreen(), color.getBlue(), 0, strip.start, strip.length()));
+        return new InstantCommand(() -> candle.setControl(
+            new SolidColor(strip.start, strip.end - 1)
+                .withColor(new RGBWColor(color.getRed(), color.getGreen(), color.getBlue(), 0))
+        ));
     }
 
     /**
@@ -281,7 +289,10 @@ public class CANdleLib{
             throw new IllegalArgumentException("Parameters cannot be null");
         }
         
-        return new InstantCommand(() -> candle.setLEDs(red, green, blue, 0, strip.start, strip.length()));
+        return new InstantCommand(() -> candle.setControl(
+            new SolidColor(strip.start, strip.end - 1)
+                .withColor(new RGBWColor(red, green, blue, 0))
+        ));
     }
     
     /**
@@ -537,12 +548,14 @@ public class CANdleLib{
 
         private void draw() {
             if (states == null || colors == null || colors.length == 0) {
-                candle.setLEDs(0, 0, 0, 0, strip.start, strip.length());
+                candle.setControl(
+                    new SolidColor(strip.start, strip.end - 1)
+                        .withColor(new RGBWColor(0, 0, 0, 0))
+                );
                 return;
             }
         
             Enum<?> state = states.get();
-
             int colorIndex = state.ordinal() % colors.length;
             LEDColor color = colors[colorIndex];
         
@@ -550,14 +563,15 @@ public class CANdleLib{
             int g = color.getGreen();
             int b = color.getBlue();
         
-            candle.setLEDs(r, g, b, 0, strip.start, strip.length());
+            candle.setControl(
+                new SolidColor(strip.start, strip.end - 1)
+                    .withColor(new RGBWColor(r, g, b, 0))
+            );
         }
-        
 
         private Command updateCommand = new Command() {
             @Override
-            public void initialize() {
-            }
+            public void initialize() {}
     
             @Override
             public void execute() {
@@ -592,7 +606,10 @@ public class CANdleLib{
             if (updateCommand.isScheduled()) {
                 updateCommand.cancel();
             }
-            candle.setLEDs(0, 0, 0, 0, strip.start, strip.length());
+            candle.setControl(
+                new SolidColor(strip.start, strip.end - 1)
+                    .withColor(new RGBWColor(0, 0, 0, 0))
+            );
         }
 
         @Override
@@ -644,18 +661,25 @@ public class CANdleLib{
             double fraction = (value - min) / (max - min);
             int litLEDs = (int) Math.round(fraction * totalLEDs);
     
-            candle.setLEDs(fillColor.getRed(), fillColor.getGreen(), fillColor.getBlue(), 0, strip.start, litLEDs);
+            if (litLEDs > 0) {
+                candle.setControl(
+                    new SolidColor(strip.start, strip.start + litLEDs - 1)
+                        .withColor(new RGBWColor(fillColor.getRed(), fillColor.getGreen(), fillColor.getBlue(), 0))
+                );
+            }
     
             int remaining = totalLEDs - litLEDs;
             if (remaining > 0) {
-                candle.setLEDs(emptyColor.getRed(), emptyColor.getGreen(), emptyColor.getBlue(), 0, strip.start + litLEDs, remaining);
+                candle.setControl(
+                    new SolidColor(strip.start + litLEDs, strip.end - 1)
+                        .withColor(new RGBWColor(emptyColor.getRed(), emptyColor.getGreen(), emptyColor.getBlue(), 0))
+                );
             }
         }
     
         private Command updateCommand = new Command() {
             @Override
-            public void initialize() {
-            }
+            public void initialize() {}
     
             @Override
             public void execute() {
@@ -690,7 +714,10 @@ public class CANdleLib{
             if (updateCommand.isScheduled()) {
                 updateCommand.cancel();
             }
-            candle.setLEDs(0, 0, 0, 0, strip.start, strip.length());
+            candle.setControl(
+                new SolidColor(strip.start, strip.end - 1)
+                    .withColor(new RGBWColor(0, 0, 0, 0))
+            );
         }
 
         @Override
@@ -731,17 +758,16 @@ public class CANdleLib{
         }
 
         private void draw() {
-            if (state.get()) {
-                candle.setLEDs(trueColor.getRed(), trueColor.getGreen(), trueColor.getBlue(), 0, strip.start, strip.length());
-            } else {
-                candle.setLEDs(falseColor.getRed(), falseColor.getGreen(), falseColor.getBlue(), 0, strip.start, strip.length());
-            }
+            LEDColor color = state.get() ? trueColor : falseColor;
+            candle.setControl(
+                new SolidColor(strip.start, strip.end - 1)
+                    .withColor(new RGBWColor(color.getRed(), color.getGreen(), color.getBlue(), 0))
+            );
         }
 
         private Command updateCommand = new Command() {
             @Override
-            public void initialize() {
-            }
+            public void initialize() {}
     
             @Override
             public void execute() {
@@ -776,7 +802,10 @@ public class CANdleLib{
             if (updateCommand.isScheduled()) {
                 updateCommand.cancel();
             }
-            candle.setLEDs(0, 0, 0, 0, strip.start, strip.length());
+            candle.setControl(
+                new SolidColor(strip.start, strip.end - 1)
+                    .withColor(new RGBWColor(0, 0, 0, 0))
+            );
         }
 
         @Override
@@ -825,11 +854,19 @@ public class CANdleLib{
             
             litLEDs = Math.max(0, Math.min(litLEDs, totalLEDs));
             
-            candle.setLEDs(color.getRed(), color.getGreen(), color.getBlue(), 0, strip.start, litLEDs);
+            if (litLEDs > 0) {
+                candle.setControl(
+                    new SolidColor(strip.start, strip.start + litLEDs - 1)
+                        .withColor(new RGBWColor(color.getRed(), color.getGreen(), color.getBlue(), 0))
+                );
+            }
             
             int remainingLEDs = totalLEDs - litLEDs;
             if (remainingLEDs > 0) {
-                candle.setLEDs(0, 0, 0, 0, strip.start + litLEDs, remainingLEDs);
+                candle.setControl(
+                    new SolidColor(strip.start + litLEDs, strip.end - 1)
+                        .withColor(new RGBWColor(0, 0, 0, 0))
+                );
             }
         }
         
@@ -846,12 +883,7 @@ public class CANdleLib{
             
             @Override
             public boolean isFinished() {
-                if ((System.currentTimeMillis() - startTimeMs) / 1000.0 >= time) {
-                    return true;
-                }
-                else {
-                    return false;
-                }
+                return (System.currentTimeMillis() - startTimeMs) / 1000.0 >= time;
             }
             
             @Override
@@ -877,7 +909,10 @@ public class CANdleLib{
             if (updateCommand.isScheduled()) {
                 updateCommand.cancel();
             }
-            candle.setLEDs(0, 0, 0, 0, strip.start, strip.length());
+            candle.setControl(
+                new SolidColor(strip.start, strip.end - 1)
+                    .withColor(new RGBWColor(0, 0, 0, 0))
+            );
         }
 
         @Override
@@ -930,13 +965,20 @@ public class CANdleLib{
             
             double scale = dimmness + (brightness * (1.0 - dimmness));
             
-            candle.setLEDs((int)(color.getRed() * scale), (int)(color.getGreen() * scale), (int)(color.getBlue() * scale), 0, strip.start, strip.length());
+            candle.setControl(
+                new SolidColor(strip.start, strip.end - 1)
+                    .withColor(new RGBWColor(
+                        (int)(color.getRed() * scale), 
+                        (int)(color.getGreen() * scale), 
+                        (int)(color.getBlue() * scale), 
+                        0
+                    ))
+            );
         }
 
         private Command updateCommand = new Command() {
             @Override
-            public void initialize() {
-            }
+            public void initialize() {}
     
             @Override
             public void execute() {
@@ -971,7 +1013,10 @@ public class CANdleLib{
             if (updateCommand.isScheduled()) {
                 updateCommand.cancel();
             }
-            candle.setLEDs(0, 0, 0, 0, strip.start, strip.length());
+            candle.setControl(
+                new SolidColor(strip.start, strip.end - 1)
+                    .withColor(new RGBWColor(0, 0, 0, 0))
+            );
         }
 
         @Override
@@ -980,18 +1025,17 @@ public class CANdleLib{
         }
     }
 
-
     /**
      * Mock CANdle implementation with a GUI for simulation environments.
+     * Phoenix 6 compatible version using setControl() API.
      * 
      * <p>This class simulates a CANdle device by displaying a graphical
      * representation of the LED strip in a window. It allows visualization
-     * of LED colors and animations during simulation.
+     * of LED colors during simulation.
      */
     private static class MockCANdleGUI extends CANdle {
         private final int LED_COUNT;
         private final java.awt.Color[] leds;
-
 
         private JFrame frame;
         private JPanel stripPanel;
@@ -1013,7 +1057,6 @@ public class CANdleLib{
         
             SwingUtilities.invokeLater(this::createGUI);
         }
-        
 
         private void createGUI() {
             frame = new JFrame("Mock CANdle LED Strip");
@@ -1036,7 +1079,7 @@ public class CANdleLib{
                 }
             };
 
-            statusLabel = new JLabel("Animation: None", SwingConstants.CENTER);
+            statusLabel = new JLabel("Mode: Idle", SwingConstants.CENTER);
 
             frame.add(stripPanel, BorderLayout.CENTER);
             frame.add(statusLabel, BorderLayout.SOUTH);
@@ -1045,40 +1088,32 @@ public class CANdleLib{
         }
 
         @Override
-        public ErrorCode configAllSettings(CANdleConfiguration config, int timeoutMs) {
-            return ErrorCode.OK;
-        }
+        public StatusCode setControl(SolidColor request) {
+            // Extract parameters from the SolidColor request
+            int startIndex = request.LEDStartIndex;
+            int endIndex = request.LEDEndIndex;
+            RGBWColor color = request.Color;
+            
+            // Extract RGB values from RGBWColor
+            int r = color.Red;
+            int g = color.Green;
+            int b = color.Blue;
+            
+            java.awt.Color awtColor = new java.awt.Color(clamp(r), clamp(g), clamp(b));
 
-        @Override
-        public ErrorCode setLEDs(int r, int g, int b) {
-            return setLEDs(r, g, b, 0, 0, LED_COUNT);
-        }
-
-        @Override
-        public ErrorCode setLEDs(int r, int g, int b, int w, int startIdx, int count) {
-            java.awt.Color color = new java.awt.Color(clamp(r), clamp(g), clamp(b));
-
-            int end = Math.min(startIdx + count, LED_COUNT);
-            for (int i = startIdx; i < end; i++) {
-                if (i >= 0) {
-                    leds[i] = color;
+            // LEDEndIndex is inclusive, so we go up to and including endIndex
+            int end = Math.min(endIndex + 1, LED_COUNT);
+            for (int i = startIndex; i < end; i++) {
+                if (i >= 0 && i < LED_COUNT) {
+                    leds[i] = awtColor;
                 }
             }
 
             repaintStrip();
-            return ErrorCode.OK;
-        }
-
-        @Override
-        public ErrorCode animate(Animation animation, int slot) {
-            statusLabel.setText("Animation: " + animation.getClass().getSimpleName());
-            return ErrorCode.OK;
-        }
-
-        @Override
-        public ErrorCode clearAnimation(int slot) {
-            statusLabel.setText("Animation: None");
-            return ErrorCode.OK;
+            statusLabel.setText(String.format("RGB(%d, %d, %d) | Start: %d | End: %d", 
+                r, g, b, startIndex, endIndex));
+            
+            return StatusCode.OK;
         }
 
         private void repaintStrip() {
@@ -1089,5 +1124,4 @@ public class CANdleLib{
             return Math.max(0, Math.min(255, v));
         }
     }
-
 }

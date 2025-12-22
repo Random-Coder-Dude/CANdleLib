@@ -6,7 +6,9 @@ import frc.robot.CANdle.CANdleLib.Animations;
 import frc.robot.CANdle.CANdleLib.Colors;
 import frc.robot.CANdle.CANdleLib.LEDStrip;
 
-import com.ctre.phoenix.led.CANdle;
+import com.ctre.phoenix6.configs.LEDConfigs;
+import com.ctre.phoenix6.hardware.CANdle;
+import com.ctre.phoenix6.signals.StripTypeValue;
 
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.InstantCommand;
@@ -14,7 +16,7 @@ import edu.wpi.first.wpilibj2.command.button.CommandXboxController;
 
 public class RobotContainer {
 
-  private final CANdleLib candleLib = new CANdleLib(Constants.candle.id, CANdle.LEDStripType.RGB, 8);
+  private final CANdleLib candleLib = new CANdleLib(Constants.candle.id, new LEDConfigs().withStripType(StripTypeValue.RGB), 8);
   private final CANdle candle = candleLib.createCANdle();
   
   private final LEDStrip topStrip = candleLib.createLEDStrip(0, 3);
